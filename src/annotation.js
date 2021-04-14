@@ -12,10 +12,6 @@ var textFeature = require('./textFeature');
 
 var annotationId = 0;
 
-/**
- * @alias geo.annotation.state
- * @enum {string}
- */
 var annotationState = {
   create: 'create',
   done: 'done',
@@ -25,14 +21,6 @@ var annotationState = {
 
 var annotationActionOwner = 'annotationAction';
 
-/**
- * These styles are applied to edit handles, and can be overridden by
- * individual annotations.
- *
- * @alias geo.annotation.defaultEditHandleStyle
- * @type {object}
- * @default
- */
 var defaultEditHandleStyle = {
   fill: true,
   fillColor: function (d) {
@@ -67,29 +55,22 @@ var defaultEditHandleStyle = {
 var editHandleFeatureLevel = 3;
 
 /**
- * General annotation specification.
- *
- * @typedef {object} geo.annotation.spec
- * @property {string} [name] A name for the annotation.  This defaults to the
- *    type with a unique ID suffixed to it.
- * @property {geo.annotationLayer} [layer] A reference to the controlling
- *    layer.  This is used for coordinate transforms.
- * @property {string} [state] Initial annotation state.  One of the
- *    {@link geo.annotation.state} values.
- * @property {boolean|string[]} [showLabel=true] `true` to show the annotation
- *    label on annotations in done or edit states.  Alternately, a list of
- *    states in which to show the label.  Falsy to not show the label.
- */
-
-/**
  * Base annotation class.
  *
  * @class
  * @alias geo.annotation
  * @param {string} type The type of annotation.  These should be registered
- *    with {@link geo.registerAnnotation} and can be listed with
- *    {@link geo.listAnnotations}.
- * @param {geo.annotation.spec?} [args] Options for the annotation.
+ *    with utils.registerAnnotation and can be listed with same function.
+ * @param {object?} [args] Individual annotations have additional options.
+ * @param {string} [args.name] A name for the annotation.  This defaults to
+ *    the type with a unique ID suffixed to it.
+ * @param {geo.annotationLayer} [arg.layer] A reference to the controlling
+ *    layer.  This is used for coordinate transforms.
+ * @param {string} [args.state] Initial annotation state.  One of the
+ *    `geo.annotation.state` values.
+ * @param {boolean|string[]} [args.showLabel=true] `true` to show the
+ *    annotation label on annotations in done or edit states.  Alternately, a
+ *    list of states in which to show the label.  Falsy to not show the label.
  * @returns {geo.annotation}
  */
 var annotation = function (type, args) {
@@ -167,10 +148,10 @@ var annotation = function (type, args) {
   /**
    * Get or set the label of this annotation.
    *
-   * @param {string|null|undefined} [arg] If `undefined`, return the label,
+   * @param {string|null|undefined} arg If `undefined`, return the label,
    *    otherwise change it.  `null` to clear the label.
-   * @param {boolean} [noFallback] If not truthy and the label is `null`,
-   *    return the name, otherwise return the actual value for label.
+   * @param {boolean} noFallback If not truthy and the label is `null`, return
+   *    the name, otherwise return the actual value for label.
    * @returns {this|string} The current label or this annotation.
    */
   this.label = function (arg, noFallback) {
@@ -228,7 +209,7 @@ var annotation = function (type, args) {
 
   /**
    * If the label should be shown, get a record of the label that can be used
-   * in a {@link geo.textFeature}.
+   * in a `geo.textFeature`.
    *
    * @returns {geo.annotationLayer.labelRecord|undefined} A label record, or
    *    `undefined` if it should not be shown.
@@ -295,9 +276,8 @@ var annotation = function (type, args) {
    *
    * @param {string|undefined} arg If `undefined`, return the state,
    *    otherwise change it.  This should be one of the
-   *    {@link geo.annotation.state} values.
+   *    `geo.annotation.state` values.
    * @returns {this|string} The current state or this annotation.
-   * @fires geo.event.annotation.state
    */
   this.state = function (arg) {
     if (arg === undefined) {
@@ -307,7 +287,7 @@ var annotation = function (type, args) {
       m_state = arg;
       if (m_this.layer()) {
         m_this.layer().geoTrigger(geo_event.annotation.state, {
-          annotation: m_this
+          annotation: this
         });
       }
     }
@@ -389,7 +369,6 @@ var annotation = function (type, args) {
    * @param {object} handle The data for the edit handle.
    * @param {boolean} enable True to enable the handle, false to disable.
    * @returns {this}
-   * @fires geo.event.annotation.select_edit_handle
    */
   this.selectEditHandle = function (handle, enable) {
     if (enable && m_this._editHandle && m_this._editHandle.handle &&
@@ -409,13 +388,6 @@ var annotation = function (type, args) {
       resizePosition: m_this._rotateHandlePosition(
         handle.style.resizeHandleOffset, handle.style.resizeHandleRotation)
     };
-    if (m_this.layer()) {
-      m_this.layer().geoTrigger(geo_event.annotation.select_edit_handle, {
-        annotation: m_this,
-        handle: m_this._editHandle,
-        enable: enable
-      });
-    }
     return m_this;
   };
 
@@ -429,7 +401,6 @@ var annotation = function (type, args) {
    *    the option to this value.
    * @returns {object|this} If options are set, return the annotation,
    *    otherwise return the requested option or the set of options.
-   * @fires geo.event.annotation.coordinates
    */
   this.options = function (arg1, arg2) {
     if (arg1 === undefined) {
@@ -438,9 +409,7 @@ var annotation = function (type, args) {
     if (typeof arg1 === 'string' && arg2 === undefined) {
       return m_options[arg1];
     }
-    var coordinatesSet;
     if (arg2 === undefined) {
-      coordinatesSet = arg1[m_this._coordinateOption] !== undefined;
       m_options = $.extend(true, m_options, arg1);
       /* For style objects, re-extend them without recursion.  This allows
        * setting colors without an opacity field, for instance. */
@@ -452,7 +421,6 @@ var annotation = function (type, args) {
         }
       });
     } else {
-      coordinatesSet = arg1 === m_this._coordinateOption;
       m_options[arg1] = arg2;
     }
     if (m_options.coordinates) {
@@ -476,12 +444,7 @@ var annotation = function (type, args) {
       m_this.description(description);
     }
     m_this.modified();
-    if (coordinatesSet && m_this.layer()) {
-      m_this.layer().geoTrigger(geo_event.annotation.coordinates, {
-        annotation: m_this
-      });
-    }
-    return m_this;
+    return this;
   };
 
   /**
@@ -494,7 +457,7 @@ var annotation = function (type, args) {
    *    current style with the values in the specified object.
    * @param {*} [arg2] If `arg1` is a string, the new value for that style.
    * @param {string} [styleType='style'] The name of the style type, such as
-   *    `createStyle`, `editStyle`, `editHandleStyle`, `labelStyle`, or
+   *    `createStyle', `editStyle`, `editHandleStyle`, `labelStyle`, or
    *    `highlightStyle`.
    * @returns {object|this} Either the entire style object, the value of a
    *    specific style, or the current class instance.
@@ -519,38 +482,20 @@ var annotation = function (type, args) {
     return m_this;
   };
 
-  /**
-   * Calls {@link geo.annotation#style} with `styleType='createStyle'`.
-   * @function createStyle
-   * @memberof geo.annotation
-   * @instance
-   */
-  /**
-   * Calls {@link geo.annotation#style} with `styleType='editStyle'`.
-   * @function editStyle
-   * @memberof geo.annotation
-   * @instance
-   */
-  /**
-   * Calls {@link geo.annotation#style} with `styleType='editHandleStyle'`.
-   * @function editHandleStyle
-   * @memberof geo.annotation
-   * @instance
-   */
-  /**
-   * Calls {@link geo.annotation#style} with `styleType='labelStyle'`.
-   * @function labelStyle
-   * @memberof geo.annotation
-   * @instance
-   */
-  /**
-   * Calls {@link geo.annotation#style} with `styleType='highlightHandleStyle'`.
-   * @function highlightHandleStyle
-   * @memberof geo.annotation
-   * @instance
-   */
   ['createStyle', 'editStyle', 'editHandleStyle', 'labelStyle', 'highlightStyle'
   ].forEach(function (styleType) {
+    /**
+     * Set or get a specific style type.
+     *
+     * @param {string|object} [arg1] If `undefined`, return the current style
+     *    object.  If a string and `arg2` is undefined, return the style
+     *    associated with the specified key.  If a string and `arg2` is defined,
+     *    set the named style to the specified value.  Otherwise, extend the
+     *    current style with the values in the specified object.
+     * @param {*} [arg2] If `arg1` is a string, the new value for that style.
+     * @returns {object|this} Either the entire style object, the value of a
+     *    specific style, or the current class instance.
+     */
     m_this[styleType] = function (arg1, arg2) {
       return m_this.style(arg1, arg2, styleType);
     };
@@ -651,8 +596,6 @@ var annotation = function (type, args) {
     return [];
   };
 
-  this._coordinateOption = 'vertices';
-
   /**
    * Get coordinates associated with this annotation.
    *
@@ -665,7 +608,7 @@ var annotation = function (type, args) {
     if (m_this.layer()) {
       var map = m_this.layer().map();
       gcs = (gcs === null ? map.gcs() : (
-        gcs === undefined ? map.ingcs() : gcs));
+             gcs === undefined ? map.ingcs() : gcs));
       if (gcs !== map.gcs()) {
         coord = transform.transformCoordinates(map.gcs(), gcs, coord);
       }
@@ -796,7 +739,7 @@ var annotation = function (type, args) {
     if (includeCrs) {
       var map = m_this.layer().map();
       gcs = (gcs === null ? map.gcs() : (
-        gcs === undefined ? map.ingcs() : gcs));
+             gcs === undefined ? map.ingcs() : gcs));
       obj.crs = {
         type: 'name',
         properties: {
@@ -825,10 +768,9 @@ var annotation = function (type, args) {
     var editPoints,
         style = $.extend({}, defaultEditHandleStyle, m_this.editHandleStyle()),
         handles = util.ensureFunction(style.handles)() || {},
-        selected = (
-          m_this._editHandle && m_this._editHandle.handle &&
-          m_this._editHandle.handle.selected ?
-            m_this._editHandle.handle : undefined);
+        selected = (m_this._editHandle && m_this._editHandle.handle &&
+                    m_this._editHandle.handle.selected ?
+                    m_this._editHandle.handle : undefined);
     /* opts specify which handles are allowed.  They must be allowed by the
      * original opts object and by the editHandleStyle.handle object. */
     opts = $.extend({}, opts);
@@ -924,11 +866,11 @@ var annotation = function (type, args) {
           y: evt.mouse.mapgcs.y - evt.state.origin.mapgcs.y
         },
         ang1 = Math.atan2(
-          handle.rotatePosition.y - handle.center.y,
-          handle.rotatePosition.x - handle.center.x),
+            handle.rotatePosition.y - handle.center.y,
+            handle.rotatePosition.x - handle.center.x),
         ang2 = Math.atan2(
-          handle.rotatePosition.y + delta.y - handle.center.y,
-          handle.rotatePosition.x + delta.x - handle.center.x),
+            handle.rotatePosition.y + delta.y - handle.center.y,
+            handle.rotatePosition.x + delta.x - handle.center.x),
         ang = ang2 - ang1,
         curPts = m_this._coordinates();
     var pts = start.map(function (elem) {
@@ -1043,12 +985,12 @@ var annotation = function (type, args) {
        * allow it to be merged into another vertex.  This prevents small scale
        * edits from collapsing immediately. */
     } else if (layer.displayDistance(
-      curPts[index], null,
-      curPts[(index + 1) % curPts.length], null) <= aPP) {
+        curPts[index], null,
+        curPts[(index + 1) % curPts.length], null) <= aPP) {
       near = (index + 1) % curPts.length;
     } else if (layer.displayDistance(
-      curPts[index], null,
-      curPts[(index + curPts.length - 1) % curPts.length], null) <= aPP) {
+        curPts[index], null,
+        curPts[(index + curPts.length - 1) % curPts.length], null) <= aPP) {
       near = (index + curPts.length - 1) % curPts.length;
     }
     atEnd = ((near === 0 && index === curPts.length - 1) ||
@@ -1087,7 +1029,7 @@ var annotation = function (type, args) {
  * @param {Array} originalArgs arguments to original call
  * @returns {geo.actionRecord[]} A list of actions.
  */
-function continuousVerticesActions(m_this, s_actions, state, name, originalArgs) {
+ function continuousVerticesActions(m_this, s_actions, state, name, originalArgs) {
   if (!state) {
     state = m_this.state();
   }
@@ -1121,7 +1063,7 @@ function continuousVerticesActions(m_this, s_actions, state, name, originalArgs)
  *    `'remove'` if the annotation should be removed, falsy to not update
  *    anything.
  */
-function continuousVerticesProcessAction(m_this, evt, name) {
+ function continuousVerticesProcessAction(m_this, evt, name) {
   var layer = m_this.layer();
   if (m_this.state() !== annotationState.create || !layer ||
       evt.state.action !== geo_action['annotation_' + name]) {
@@ -1158,21 +1100,6 @@ function continuousVerticesProcessAction(m_this, evt, name) {
 }
 
 /**
- * Rectangle annotation specification.  Extends {@link geo.annotation.spec}.
- *
- * @typedef {object} geo.rectangleAnnotation.spec
- * @extends geo.annotation.spec
- * @property {geo.geoPosition[]} [corners] A list of four corners in map gcs
- *    coordinates.  These must be in order around the perimeter of the
- *    rectangle (in either direction).
- * @property {geo.geoPosition[]} [coordinates] An alternate name for `corners`.
- * @property {geo.polygonFeature.styleSpec} [style] The style to apply to a
- *    finished rectangle.  This uses styles for {@link geo.polygonFeature}.
- * @property {geo.polygonFeature.styleSpec} [editStyle] The style to apply to a
- *    rectangle in edit mode.
- */
-
-/**
  * Rectangle annotation class.
  *
  * Rectangles are always rendered as polygons.  This could be changed -- if no
@@ -1183,7 +1110,27 @@ function continuousVerticesProcessAction(m_this, evt, name) {
  * @alias geo.rectangleAnnotation
  * @extends geo.annotation
  *
- * @param {geo.rectangleAnnotation.spec?} [args] Options for the annotation.
+ * @param {object?} [args] Options for the annotation.
+ * @param {string} [args.name] A name for the annotation.  This defaults to
+ *    the type with a unique ID suffixed to it.
+ * @param {string} [args.state] initial annotation state.  One of the
+ *    annotation.state values.
+ * @param {boolean|string[]} [args.showLabel=true] `true` to show the
+ *    annotation label on annotations in done or edit states.  Alternately, a
+ *    list of states in which to show the label.  Falsy to not show the label.
+ * @param {geo.geoPosition[]} [args.corners] A list of four corners in map
+ *    gcs coordinates.  These must be in order around the perimeter of the
+ *    rectangle (in either direction).
+ * @param {geo.geoPosition[]} [args.coordinates] An alternate name for
+ *    `args.corners`.
+ * @param {object} [args.style] The style to apply to a finished rectangle.
+ *    This uses styles for polygons, including `fill`, `fillColor`,
+ *    `fillOpacity`, `stroke`, `strokeWidth`, `strokeColor`, and
+ *    `strokeOpacity`.
+ * @param {object} [args.editStyle] The style to apply to a rectangle in edit
+ *    mode.  This uses styles for polygons and lines, including `fill`,
+ *    `fillColor`, `fillOpacity`, `stroke`, `strokeWidth`, `strokeColor`, and
+ *    `strokeOpacity`.
  */
 var rectangleAnnotation = function (args) {
   'use strict';
@@ -1319,8 +1266,8 @@ var rectangleAnnotation = function (args) {
   };
 
   /**
-   * Get and optionally set coordinates associated with this annotation in the
-   * map gcs coordinate system.
+   * Get coordinates associated with this annotation in the map gcs coordinate
+   * system.
    *
    * @param {geo.geoPosition[]} [coordinates] An optional array of coordinates
    *  to set.
@@ -1334,8 +1281,6 @@ var rectangleAnnotation = function (args) {
     }
     return m_this.options('corners');
   };
-
-  this._coordinateOption = 'corners';
 
   /**
    * Return the coordinates to be stored in a geojson geometry object.
@@ -1542,22 +1487,6 @@ rectangleRequiredFeatures[polygonFeature.capabilities.feature] = true;
 registerAnnotation('rectangle', rectangleAnnotation, rectangleRequiredFeatures);
 
 /**
- * Polygon annotation specification.  Extends {@link geo.annotation.spec}.
- *
- * @typedef {object} geo.polygonAnnotation.spec
- * @extends geo.annotation.spec
- * @property {geo.geoPosition[]} [vertices] A list of vertices in map gcs
- *    coordinates.  These must be in order around the perimeter of the polygon
- *    (in either direction).
- * @property {geo.geoPosition[]} [coordinates] An alternate name for
- *    `vertices`.
- * @property {geo.polygonFeature.styleSpec} [style] The style to apply to a
- *    finished polygon.  This uses styles for {@link geo.polygonFeature}.
- * @property {geo.polygonFeature.styleSpec} [editStyle] The style to apply to ai
- *    polygon in edit mode.
- */
-
-/**
  * Polygon annotation class
  *
  * When complete, polygons are rendered as polygons.  During creation they are
@@ -1589,7 +1518,7 @@ registerAnnotation('rectangle', rectangleAnnotation, rectangleRequiredFeatures);
  *    `fillColor`, `fillOpacity`, `stroke`, `strokeWidth`, `strokeColor`, and
  *    `strokeOpacity`.
  */
-var polygonAnnotation = function (args) {
+ var polygonAnnotation = function (args) {
   'use strict';
   if (!(this instanceof polygonAnnotation)) {
     return new polygonAnnotation(args);
@@ -1620,7 +1549,7 @@ var polygonAnnotation = function (args) {
         /* Return an array that has the same number of items as we have
          * vertices. */
         return Array.apply(null, Array(m_this.options('vertices').length)).map(
-          function () { return d; });
+            function () { return d; });
       },
       position: function (d, i) {
         return m_this.options('vertices')[i];
@@ -1684,8 +1613,8 @@ var polygonAnnotation = function (args) {
   };
 
   /**
-   * Get and optionally set coordinates associated with this annotation in the
-   * map gcs coordinate system.
+   * Get coordinates associated with this annotation in the map gcs coordinate
+   * system.
    *
    * @param {geo.geoPosition[]} [coordinates] An optional array of coordinates
    *  to set.
@@ -1743,16 +1672,16 @@ var polygonAnnotation = function (args) {
     if (evt.buttonsDown.left) {
       if (vertices.length) {
         if (vertices.length >= 2 && layer.displayDistance(
-          vertices[vertices.length - 2], null, evt.map, 'display') <=
-          layer.options('adjacentPointProximity')) {
+            vertices[vertices.length - 2], null, evt.map, 'display') <=
+            layer.options('adjacentPointProximity')) {
           skip = true;
           if (m_this._lastClick &&
               evt.time - m_this._lastClick < layer.options('dblClickTime')) {
             end = true;
           }
         } else if (vertices.length >= 2 && layer.displayDistance(
-          vertices[0], null, evt.map, 'display') <=
-          layer.options('finalPointProximity')) {
+            vertices[0], null, evt.map, 'display') <=
+            layer.options('finalPointProximity')) {
           end = true;
         } else {
           vertices[vertices.length - 1] = evt.mapgcs;
@@ -1850,20 +1779,6 @@ polygonRequiredFeatures[polygonFeature.capabilities.feature] = true;
 polygonRequiredFeatures[lineFeature.capabilities.basic] = [annotationState.create];
 registerAnnotation('polygon', polygonAnnotation, polygonRequiredFeatures);
 
-/**
- * Line annotation specification.  Extends {@link geo.annotation.spec}.
- *
- * @typedef {object} geo.lineAnnotation.spec
- * @extends geo.annotation.spec
- * @property {geo.geoPosition[]} [vertices] A list of vertices in map gcs
- *    coordinates.
- * @property {geo.geoPosition[]} [coordinates] An alternate name for
- *    `vertices`.
- * @property {geo.lineFeature.styleSpec} [style] The style to apply to a
- *    finished line.  This uses styles for {@link geo.lineFeature}.
- * @property {geo.lineFeature.styleSpec} [editStyle] The style to apply to a
- *    line in edit mode.
- */
 
 /**
  * Line annotation class.
@@ -1874,7 +1789,7 @@ registerAnnotation('polygon', polygonAnnotation, polygonRequiredFeatures);
  *
  * @param {geo.lineAnnotation.spec?} [args] Options for the annotation.
  */
-var lineAnnotation = function (args) {
+ var lineAnnotation = function (args) {
   'use strict';
   if (!(this instanceof lineAnnotation)) {
     return new lineAnnotation(args);
@@ -1886,7 +1801,7 @@ var lineAnnotation = function (args) {
         /* Return an array that has the same number of items as we have
          * vertices. */
         return Array.apply(null, Array(m_this.options('vertices').length)).map(
-          function () { return d; });
+            function () { return d; });
       },
       position: function (d, i) {
         return m_this.options('vertices')[i];
@@ -1906,7 +1821,7 @@ var lineAnnotation = function (args) {
         /* Return an array that has the same number of items as we have
          * vertices. */
         return Array.apply(null, Array(m_this.options('vertices').length)).map(
-          function () { return d; });
+            function () { return d; });
       },
       position: function (d, i) {
         return m_this.options('vertices')[i];
@@ -1961,8 +1876,8 @@ var lineAnnotation = function (args) {
   };
 
   /**
-   * Get and optionally set coordinates associated with this annotation in the
-   * map gcs coordinate system.
+   * Get coordinates associated with this annotation in the map gcs coordinate
+   * system.
    *
    * @param {geo.geoPosition[]} [coordinates] An optional array of coordinates
    *  to set.
@@ -2020,16 +1935,16 @@ var lineAnnotation = function (args) {
     if (evt.buttonsDown.left) {
       if (vertices.length) {
         if (vertices.length >= 2 && layer.displayDistance(
-          vertices[vertices.length - 2], null, evt.map, 'display') <=
-          layer.options('adjacentPointProximity')) {
+            vertices[vertices.length - 2], null, evt.map, 'display') <=
+            layer.options('adjacentPointProximity')) {
           skip = true;
           if (m_this._lastClick &&
               evt.time - m_this._lastClick < layer.options('dblClickTime')) {
             end = true;
           }
         } else if (vertices.length >= 2 && layer.displayDistance(
-          vertices[0], null, evt.map, 'display') <=
-          layer.options('finalPointProximity')) {
+            vertices[0], null, evt.map, 'display') <=
+            layer.options('finalPointProximity')) {
           end = 'close';
         } else {
           vertices[vertices.length - 1] = evt.mapgcs;
@@ -2184,31 +2099,33 @@ lineRequiredFeatures[lineFeature.capabilities.basic] = [annotationState.create];
 registerAnnotation('line', lineAnnotation, lineRequiredFeatures);
 
 /**
- * Point annotation specification.  Extends {@link geo.annotation.spec}.
- *
- * @typedef {object} geo.pointAnnotation.spec
- * @extends geo.annotation.spec
- * @property {geo.geoPosition} [position] A coordinate in map gcs coordinates.
- * @property {geo.geoPosition[]} [coordinates] An array with one coordinate to
- *    use in place of `position`.
- * @property {geo.pointFeature.styleSpec} [style] The style to apply to a
- *    finished point.  This uses styles for {@link geo.pointFeature}.
- * @property {boolean|number} [style.scaled=false] If `false`, the point is not
- *    scaled with zoom level.  If `true`, the radius is based on the zoom level
- *    at first instantiation.  If a number, the radius is used at the `scaled`
- *    zoom level.
- * @property {geo.pointFeature.styleSpec} [editStyle] The style to apply to a
- *    point in edit mode.
- */
-
-/**
  * Point annotation class.
  *
  * @class
- * @alias geo.pointAnnotation
+ * @alias geo.poinyAnnotation
  * @extends geo.annotation
  *
- * @param {geo.pointAnnotation.spec?} [args] Options for the annotation.
+ * @param {object?} [args] Options for the annotation.
+ * @param {string} [args.name] A name for the annotation.  This defaults to
+ *    the type with a unique ID suffixed to it.
+ * @param {string} [args.state] initial annotation state.  One of the
+ *    annotation.state values.
+ * @param {boolean|string[]} [args.showLabel=true] `true` to show the
+ *    annotation label on annotations in done or edit states.  Alternately, a
+ *    list of states in which to show the label.  Falsy to not show the label.
+ * @param {geo.geoPosition} [args.position] A coordinate in map gcs
+ *    coordinates.
+ * @param {geo.geoPosition[]} [args.coordinates] An array with one coordinate
+ *  to use in place of `args.position`.
+ * @param {object} [args.style] The style to apply to a finished point.
+ *    This uses styles for points, including `radius`, `fill`, `fillColor`,
+ *    `fillOpacity`, `stroke`, `strokeWidth`, `strokeColor`, `strokeOpacity`,
+ *    and `scaled`.  If `scaled` is `false`, the point is not scaled with
+ *    zoom level.  If it is `true`, the radius is based on the zoom level at
+ *    first instantiation.  Otherwise, if it is a number, the radius is used
+ *    at that zoom level.
+ * @param {object} [args.editStyle] The style to apply to a point in edit
+ *    mode.
  */
 var pointAnnotation = function (args) {
   'use strict';
@@ -2296,8 +2213,8 @@ var pointAnnotation = function (args) {
   };
 
   /**
-   * Get and optionally set coordinates associated with this annotation in the
-   * map gcs coordinate system.
+   * Get coordinates associated with this annotation in the map gcs coordinate
+   * system.
    *
    * @param {geo.geoPosition[]} [coordinates] An optional array of coordinates
    *  to set.
@@ -2312,8 +2229,6 @@ var pointAnnotation = function (args) {
     }
     return [m_this.options('position')];
   };
-
-  this._coordinateOption = 'position';
 
   /**
    * Handle a mouse click on this annotation.  If the event is processed,
@@ -2389,6 +2304,5 @@ module.exports = {
   pointAnnotation: pointAnnotation,
   polygonAnnotation: polygonAnnotation,
   rectangleAnnotation: rectangleAnnotation,
-  _editHandleFeatureLevel: editHandleFeatureLevel,
-  defaultEditHandleStyle: defaultEditHandleStyle
+  _editHandleFeatureLevel: editHandleFeatureLevel
 };
