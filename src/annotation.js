@@ -1016,6 +1016,89 @@ var annotation = function (type, args) {
   };
 };
 
+/* Functions used by multiple annotations */
+
+/**
+ * Return actions needed for the specified state of this annotation.
+ *
+ * @param {object} m_this The current annotation instance.
+ * @param {function} s_actions The parent actions method.
+ * @param {string} [state] The state to return actions for.  Defaults to
+ *    the current state.
+ * @param {string} name The name of this annotation.
+ * @param {Array} originalArgs arguments to original call
+ * @returns {geo.actionRecord[]} A list of actions.
+ */
+ function continuousVerticesActions(m_this, s_actions, state, name, originalArgs) {
+  if (!state) {
+    state = m_this.state();
+  }
+  switch (state) {
+    case annotationState.create:
+      return [{
+        action: geo_action['annotation_' + name],
+        name: name + ' create',
+        owner: annotationActionOwner,
+        input: 'left',
+        modifiers: {shift: false, ctrl: false}
+      }, {
+        action: geo_action['annotation_' + name],
+        name: name + ' create',
+        owner: annotationActionOwner,
+        input: 'pan'
+      }];
+    default:
+      return s_actions.apply(m_this, originalArgs);
+  }
+}
+
+/**
+ * Process actions to allow drawing continuous vertices for an annotation.
+ *
+ * @param {object} m_this The current annotation instance.
+ * @param {geo.event} evt The action event.
+ * @param {string} name The name of this annotation.
+ * @returns {boolean|string} `true` to update the annotation, `'done'` if the
+ *    annotation was completed (changed from create to done state),
+ *    `'remove'` if the annotation should be removed, falsy to not update
+ *    anything.
+ */
+ function continuousVerticesProcessAction(m_this, evt, name) {
+  var layer = m_this.layer();
+  if (m_this.state() !== annotationState.create || !layer ||
+      evt.state.action !== geo_action['annotation_' + name]) {
+    return;
+  }
+  var cpp = layer.options('continuousPointProximity');
+  var cpc = layer.options('continuousPointColinearity');
+  if (cpp || cpp === 0) {
+    var vertices = m_this.options('vertices');
+    if (!vertices.length) {
+      vertices.push(evt.mouse.mapgcs);
+      vertices.push(evt.mouse.mapgcs);
+      return true;
+    }
+    var dist = layer.displayDistance(vertices[vertices.length - 2], null, evt.mouse.map, 'display');
+    if (dist && dist > cpp) {
+      // combine nearly colinear points
+      if (vertices.length >= (m_this._lastClickVertexCount || 1) + 3) {
+        var d01 = layer.displayDistance(vertices[vertices.length - 3], null, vertices[vertices.length - 2], null),
+            d12 = dist,
+            d02 = layer.displayDistance(vertices[vertices.length - 3], null, evt.mouse.map, 'display');
+        if (d01 && d02) {
+          var costheta = (d02 * d02 - d01 * d01 - d12 * d12) / (2 * d01 * d12);
+          if (costheta > Math.cos(cpc)) {
+            vertices.pop();
+          }
+        }
+      }
+      vertices[vertices.length - 1] = evt.mouse.mapgcs;
+      vertices.push(evt.mouse.mapgcs);
+      return true;
+    }
+  }
+}
+
 /**
  * Rectangle annotation class.
  *
@@ -1435,7 +1518,7 @@ registerAnnotation('rectangle', rectangleAnnotation, rectangleRequiredFeatures);
  *    `fillColor`, `fillOpacity`, `stroke`, `strokeWidth`, `strokeColor`, and
  *    `strokeOpacity`.
  */
-var polygonAnnotation = function (args) {
+ var polygonAnnotation = function (args) {
   'use strict';
   if (!(this instanceof polygonAnnotation)) {
     return new polygonAnnotation(args);
@@ -1479,7 +1562,8 @@ var polygonAnnotation = function (args) {
   delete args.coordinates;
   annotation.call(this, 'polygon', args);
 
-  var m_this = this;
+  var m_this = this,
+      s_actions = this.actions;
 
   /**
    * Get a list of renderable features for this annotation.  When the polygon
@@ -1609,6 +1693,7 @@ var polygonAnnotation = function (args) {
         vertices.push(evt.mapgcs);
       }
       m_this._lastClick = evt.time;
+      m_this._lastClickVertexCount = vertices.length;
     }
     if (end) {
       if (vertices.length < 4) {
@@ -1618,7 +1703,31 @@ var polygonAnnotation = function (args) {
       m_this.state(annotationState.done);
       return 'done';
     }
-    return (end || !skip);
+    return !skip;
+  };
+
+  /**
+   * Return actions needed for the specified state of this annotation.
+   *
+   * @param {string} [state] The state to return actions for.  Defaults to
+   *    the current state.
+   * @returns {geo.actionRecord[]} A list of actions.
+   */
+  this.actions = function (state) {
+    return continuousVerticesActions(m_this, s_actions, state, 'polygon', arguments);
+  };
+
+  /**
+   * Process any actions for this annotation.
+   *
+   * @param {geo.event} evt The action event.
+   * @returns {boolean|string} `true` to update the annotation, `'done'` if the
+   *    annotation was completed (changed from create to done state),
+   *    `'remove'` if the annotation should be removed, falsy to not update
+   *    anything.
+   */
+  this.processAction = function (evt) {
+    return continuousVerticesProcessAction(m_this, evt, 'polygon');
   };
 
   /**
@@ -1670,6 +1779,7 @@ polygonRequiredFeatures[polygonFeature.capabilities.feature] = true;
 polygonRequiredFeatures[lineFeature.capabilities.basic] = [annotationState.create];
 registerAnnotation('polygon', polygonAnnotation, polygonRequiredFeatures);
 
+
 /**
  * Line annotation class.
  *
@@ -1677,27 +1787,9 @@ registerAnnotation('polygon', polygonAnnotation, polygonRequiredFeatures);
  * @alias geo.lineAnnotation
  * @extends geo.annotation
  *
- * @param {object?} [args] Options for the annotation.
- * @param {string} [args.name] A name for the annotation.  This defaults to
- *    the type with a unique ID suffixed to it.
- * @param {string} [args.state] initial annotation state.  One of the
- *    annotation.state values.
- * @param {boolean|string[]} [args.showLabel=true] `true` to show the
- *    annotation label on annotations in done or edit states.  Alternately, a
- *    list of states in which to show the label.  Falsy to not show the label.
- * @param {geo.geoPosition[]} [args.vertices] A list of vertices in map gcs
- *    coordinates.
- * @param {geo.geoPosition[]} [args.coordinates] An alternate name for
- *    `args.corners`.
- * @param {object} [args.style] The style to apply to a finished line.
- *    This uses styles for lines, including `strokeWidth`, `strokeColor`,
- *    `strokeOpacity`, `strokeOffset`, `closed`, `lineCap`, and `lineJoin`.
- * @param {object} [args.editStyle] The style to apply to a line in edit
- *    mode.  This uses styles for lines, including `strokeWidth`,
- *    `strokeColor`, `strokeOpacity`, `strokeOffset`, `closed`, `lineCap`,
- *    and `lineJoin`.
+ * @param {geo.lineAnnotation.spec?} [args] Options for the annotation.
  */
-var lineAnnotation = function (args) {
+ var lineAnnotation = function (args) {
   'use strict';
   if (!(this instanceof lineAnnotation)) {
     return new lineAnnotation(args);
@@ -1875,7 +1967,7 @@ var lineAnnotation = function (args) {
       m_this.state(annotationState.done);
       return 'done';
     }
-    return (end || !skip);
+    return !skip;
   };
 
   /**
@@ -1886,26 +1978,7 @@ var lineAnnotation = function (args) {
    * @returns {geo.actionRecord[]} A list of actions.
    */
   this.actions = function (state) {
-    if (!state) {
-      state = m_this.state();
-    }
-    switch (state) {
-      case annotationState.create:
-        return [{
-          action: geo_action.annotation_line,
-          name: 'line create',
-          owner: annotationActionOwner,
-          input: 'left',
-          modifiers: {shift: false, ctrl: false}
-        }, {
-          action: geo_action.annotation_line,
-          name: 'line create',
-          owner: annotationActionOwner,
-          input: 'pan'
-        }];
-      default:
-        return s_actions.apply(m_this, arguments);
-    }
+    return continuousVerticesActions(m_this, s_actions, state, 'line', arguments);
   };
 
   /**
@@ -1918,39 +1991,7 @@ var lineAnnotation = function (args) {
    *    anything.
    */
   this.processAction = function (evt) {
-    var layer = m_this.layer();
-    if (m_this.state() !== annotationState.create || !layer ||
-        evt.state.action !== geo_action.annotation_line) {
-      return;
-    }
-    var cpp = layer.options('continuousPointProximity');
-    var cpc = layer.options('continuousPointColinearity');
-    if (cpp || cpp === 0) {
-      var vertices = m_this.options('vertices');
-      if (!vertices.length) {
-        vertices.push(evt.mouse.mapgcs);
-        vertices.push(evt.mouse.mapgcs);
-        return true;
-      }
-      var dist = layer.displayDistance(vertices[vertices.length - 2], null, evt.mouse.map, 'display');
-      if (dist && dist > cpp) {
-        // combine nearly colinear points
-        if (vertices.length >= (m_this._lastClickVertexCount || 1) + 3) {
-          var d01 = layer.displayDistance(vertices[vertices.length - 3], null, vertices[vertices.length - 2], null),
-              d12 = dist,
-              d02 = layer.displayDistance(vertices[vertices.length - 3], null, evt.mouse.map, 'display');
-          if (d01 && d02) {
-            var costheta = (d02 * d02 - d01 * d01 - d12 * d12) / (2 * d01 * d12);
-            if (costheta > Math.cos(cpc)) {
-              vertices.pop();
-            }
-          }
-        }
-        vertices[vertices.length - 1] = evt.mouse.mapgcs;
-        vertices.push(evt.mouse.mapgcs);
-        return true;
-      }
-    }
+    return continuousVerticesProcessAction(m_this, evt, 'line');
   };
 
   /**
