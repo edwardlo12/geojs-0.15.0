@@ -1,0 +1,17 @@
+/build/*
+/_build/*
+/Testing/Temporary/*
+.DS_Store
+.*.swp
+/node_modules/*
+/bower_components/*
+.vimrc
+/geo.min.js
+*.py[ocd]
+/docs/_*
+/docs/*.py
+!/docs/conf.py
+!/docs/parse.py
+.eslintcache
+/lcov
+/notes
